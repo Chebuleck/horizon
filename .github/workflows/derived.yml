@@ -27,6 +27,53 @@ jobs:
           rustup default stable
           rustc --version
 
+      - name: Minecraft 26.3 files (version JSON, client jar, libraries)
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, urllib.request
+          home = pathlib.Path.home() / ".minecraft"
+          ver = "26.3"
+          pinned = "https://piston-meta.mojang.com/v1/packages/11f1aefe473eefba0af62e3286c33b692807b2eb/26.3.json"
+
+          def get(url):
+              with urllib.request.urlopen(url, timeout=120) as r:
+                  return r.read()
+
+          def save(path, url):
+              p = home / path
+              if p.is_file():
+                  return
+              p.parent.mkdir(parents=True, exist_ok=True)
+              p.write_bytes(get(url))
+
+          raw = get(pinned)
+          (home / "versions" / ver).mkdir(parents=True, exist_ok=True)
+          (home / "versions" / ver / f"{ver}.json").write_bytes(raw)
+          version = json.loads(raw)
+
+          client = version["downloads"]["client"]
+          save(f"versions/{ver}/{ver}.jar", client["url"])
+
+          count = 0
+          for lib in version.get("libraries", []):
+              artifact = (lib.get("downloads") or {}).get("artifact")
+              if not artifact:
+                  continue
+              rules = lib.get("rules")
+              if rules:
+                  allowed = False
+                  for rule in rules:
+                      os_name = (rule.get("os") or {}).get("name")
+                      if os_name and os_name != "linux":
+                          continue
+                      allowed = rule.get("action") == "allow"
+                  if not allowed:
+                      continue
+              save("libraries/" + artifact["path"], artifact["url"])
+              count += 1
+          print("client", client["sha1"], "libraries", count)
+          PY
+
       - name: server.jar 26.3
         run: |
           curl -sSfL -o /tmp/26.3.json \
@@ -36,7 +83,7 @@ jobs:
           ls -l /tmp/server.jar
 
       - name: Prepare game files
-        run: cargo run --release -p horizon-prepare -- --prepare --server-jar /tmp/server.jar
+        run: cargo run --release -p horizon-prepare -- --prepare --minecraft-dir "$HOME/.minecraft" --server-jar /tmp/server.jar
 
       - name: Pack derived archive
         run: bash packaging/android/make_derived_pack.sh
