@@ -1,0 +1,50 @@
+name: horizon-derived
+
+# Собирает horizon-derived.zip в облаке GitHub (Linux + JDK 25 + Rust).
+# Запуск: вкладка Actions -> horizon-derived -> Run workflow -> дождаться -> скачать артефакт.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustc --version
+
+      - name: server.jar 26.3
+        run: |
+          curl -sSfL -o /tmp/26.3.json \
+            https://piston-meta.mojang.com/v1/packages/11f1aefe473eefba0af62e3286c33b692807b2eb/26.3.json
+          url=$(python3 -c "import json;print(json.load(open('/tmp/26.3.json'))['downloads']['server']['url'])")
+          curl -sSfL -o /tmp/server.jar "$url"
+          ls -l /tmp/server.jar
+
+      - name: Prepare game files
+        run: cargo run --release -p horizon-prepare -- --prepare --server-jar /tmp/server.jar
+
+      - name: Pack derived archive
+        run: bash packaging/android/make_derived_pack.sh
+
+      - name: Upload horizon-derived.zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: horizon-derived
+          path: target/android/horizon-derived.zip
+          if-no-files-found: error
+          retention-days: 30
