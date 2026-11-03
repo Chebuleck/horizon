@@ -629,12 +629,13 @@ impl Game<'_> {
             }
             let (c, r) = gui.place(layout, id);
             if id == Id::Stick {
-                disc(batch, atlas, c, r, fade(rgba(0, 0, 0, 80), a));
-                ring(batch, atlas, c, r, 1.5, fade(rgba(255, 255, 255, 130), a));
+                // Bedrock's joystick: a dark disc, a bright rim and a solid knob.
+                disc(batch, atlas, c, r, fade(rgba(0, 0, 0, 100), a));
+                ring(batch, atlas, c, r, 2.0, fade(rgba(255, 255, 255, 175), a));
                 let k = t.knob;
                 let knob = [c[0] + k[0] * r * 0.6, c[1] - k[1] * r * 0.6];
                 let held = t.fingers.values().any(|f| matches!(f, Finger::Stick));
-                disc(batch, atlas, knob, r * 0.4, fade(rgba(255, 255, 255, if held { 190 } else { 130 }), a));
+                disc(batch, atlas, knob, r * 0.42, fade(rgba(255, 255, 255, if held { 235 } else { 200 }), a));
             } else {
                 let down = match id {
                     Id::Sneak => t.sneaking,
@@ -644,9 +645,11 @@ impl Game<'_> {
                     Id::Use => self.pad.injected.triggers[0] > 0.5,
                     _ => false,
                 };
-                disc(batch, atlas, c, r, fade(rgba(0, 0, 0, if down { 160 } else { 95 }), a));
-                ring(batch, atlas, c, r, 1.0, fade(rgba(255, 255, 255, 150), a));
-                icon(batch, atlas, id, c, r, fade(0xF0FF_FFFF, a));
+                // Bedrock lights a held button up instead of darkening it.
+                let fill = if down { rgba(255, 255, 255, 70) } else { rgba(0, 0, 0, 115) };
+                disc(batch, atlas, c, r, fade(fill, a));
+                ring(batch, atlas, c, r, 1.5, fade(rgba(255, 255, 255, if down { 255 } else { 180 }), a));
+                icon(batch, atlas, id, c, r * 1.12, fade(0xFFFF_FFFF, a));
             }
             if editing && t.selected == Some(id) {
                 ring(batch, atlas, c, r + 2.0, 1.5, rgba(255, 220, 60, 255));
