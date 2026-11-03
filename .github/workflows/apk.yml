@@ -1,0 +1,67 @@
+name: apk
+
+# Builds an installable APK in the cloud (no PC, no Gradle): Rust for
+# arm64-linux-android, then aapt2 + d8 + apksigner from build_apk.sh.
+# Runs as its own package id (dev.horizonlab.horizon.dev, "Horizon Bedrock"),
+# so it installs beside the official app instead of replacing it: a rebuild is
+# signed with another key, and Android refuses an update signed differently.
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Cargo profile (fast = quick to link, release = thin LTO)
+        type: choice
+        options: [fast, release]
+        default: fast
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      CARGO_TERM_COLOR: always
+      ANDROID_MANIFEST: packaging/android/AndroidManifest.dev.xml
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add aarch64-linux-android
+          rustc --version
+
+      - name: cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      - name: Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "--- ndk ---"; ls "$ANDROID_HOME/ndk" 2>/dev/null || echo none
+          echo "--- platforms ---"; ls "$ANDROID_HOME/platforms" 2>/dev/null || echo none
+          echo "--- build-tools ---"; ls "$ANDROID_HOME/build-tools" 2>/dev/null || echo none
+
+      - name: Build APK
+        run: PROFILE=${{ inputs.profile }} bash packaging/android/build_apk.sh
+
+      - name: Check package and signature
+        run: |
+          BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n1)"
+          "$BT/aapt2" dump badging target/android/horizon.apk | head -3
+          "$BT/apksigner" verify --print-certs target/android/horizon.apk | head -5
+          ls -l target/android/horizon.apk
+
+      - name: Upload horizon.apk
+        uses: actions/upload-artifact@v4
+        with:
+          name: horizon-apk
+          path: target/android/horizon.apk
+          if-no-files-found: error
+          retention-days: 30
